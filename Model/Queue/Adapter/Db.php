@@ -8,6 +8,12 @@ namespace Dopamedia\MessageQueue\Model\Queue\Adapter;
 
 class Db extends \Zend_Queue_Adapter_Db
 {
+
+    /**
+     * @var \Dopamedia\MessageQueue\Model\IteratorFactory
+     */
+    private $iteratorFactory;
+
     /**
      * @param array|\Zend_Config $options
      * @param \Zend_Queue|null $queue
@@ -53,5 +59,89 @@ class Db extends \Zend_Queue_Adapter_Db
                 'name' => $this->_options['dbMessageTable']
             ]
         );
+    }
+
+    /**
+     * @param \Dopamedia\MessageQueue\Model\IteratorFactory $iteratorFactory
+     * @return void
+     */
+    public function setIteratorFactory(\Dopamedia\MessageQueue\Model\IteratorFactory $iteratorFactory)
+    {
+        $this->iteratorFactory = $iteratorFactory;
+    }
+
+    /**
+     * @inheritdoc
+     */
+    public function receive($maxMessages = null, $timeout = null, \Zend_Queue $queue = null)
+    {
+        if ($maxMessages === null) {
+            $maxMessages = 1;
+        }
+        if ($timeout === null) {
+            $timeout = self::RECEIVE_TIMEOUT_DEFAULT;
+        }
+        if ($queue === null) {
+            $queue = $this->_queue;
+        }
+
+        $msgs      = array();
+        $info      = $this->_messageTable->info();
+        $microtime = microtime(true); // cache microtime
+        $db        = $this->_messageTable->getAdapter();
+
+        // start transaction handling
+        try {
+            if ( $maxMessages > 0 ) { // ZF-7666 LIMIT 0 clause not included.
+                $db->beginTransaction();
+
+                $query = $db->select();
+                if ($this->_options['options'][\Zend_Db_Select::FOR_UPDATE]) {
+                    // turn on forUpdate
+                    $query->forUpdate();
+                }
+                $query->from($info['name'], array('*'))
+                    ->where('queue_id=?', $this->getQueueId($queue->getName()))
+                    ->where('handle IS NULL OR timeout+' . (int)$timeout . ' < ' . (int)$microtime)
+                    ->limit($maxMessages);
+
+                foreach ($db->fetchAll($query) as $data) {
+                    // setup our changes to the message
+                    $data['handle'] = md5(uniqid(rand(), true));
+
+                    $update = array(
+                        'handle'  => $data['handle'],
+                        'timeout' => $microtime,
+                    );
+
+                    // update the database
+                    $where   = array();
+                    $where[] = $db->quoteInto('message_id=?', $data['message_id']);
+                    $where[] = 'handle IS NULL OR timeout+' . (int)$timeout . ' < ' . (int)$microtime;
+
+                    $count = $db->update($info['name'], $update, $where);
+
+                    // we check count to make sure no other thread has gotten
+                    // the rows after our select, but before our update.
+                    if ($count > 0) {
+                        $msgs[] = $data;
+                    }
+                }
+                $db->commit();
+            }
+        } catch (\Exception $e) {
+            $db->rollBack();
+
+            #require_once 'Zend/Queue/Exception.php';
+            throw new \Zend_Queue_Exception($e->getMessage(), $e->getCode(), $e);
+        }
+
+        $options = array(
+            'queue'        => $queue,
+            'data'         => $msgs,
+            'messageClass' => $queue->getMessageClass(),
+        );
+
+        return $this->iteratorFactory->create(['options' => $options]);
     }
 }

@@ -6,6 +6,7 @@
 
 namespace Dopamedia\MessageQueue\Model;
 use Magento\Framework\Exception\LocalizedException;
+use Magento\Framework\ObjectManagerInterface;
 use Magento\Framework\Phrase;
 
 /**
@@ -17,11 +18,30 @@ use Magento\Framework\Phrase;
 class Message extends \Zend_Queue_Message
 {
     /**
+     * @var ObjectManagerInterface
+     */
+    private $objectManager;
+
+    /**
+     * @inheritDoc
+     */
+    public function __construct(
+        array $options = array(),
+        ObjectManagerInterface $objectManager
+    ) {
+        parent::__construct($options);
+        $this->objectManager = $objectManager;
+    }
+
+    /**
      * @return mixed
      */
     public function execute()
     {
         $data = \Zend_Json::decode($this->body);
-        return call_user_func_array([$data['model'], 'execute'], $data['parameters']);
+        return call_user_func_array(
+            [$this->objectManager->create($data['model']), 'execute'],
+            $data['parameters']
+        );
     }
 }
