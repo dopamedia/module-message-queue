@@ -8,7 +8,6 @@ namespace Dopamedia\MessageQueue\Model;
 
 use Magento\Framework\Exception\LocalizedException;
 use Magento\Framework\Phrase;
-use Magento\GiftMessage\Model\MessageFactory;
 
 class Queue extends \Zend_Queue
 {
@@ -27,12 +26,14 @@ class Queue extends \Zend_Queue
      * @param \Magento\Framework\App\ResourceConnection $resource
      * @param Queue\Adapter\DbFactory $adapterFactory
      * @param IteratorFactory $iteratorFactory
+     * @param MessageFactory $messageFactory
      * @param string $queueName
      */
     public function __construct(
         \Magento\Framework\App\ResourceConnection $resource,
         Queue\Adapter\DbFactory $adapterFactory,
         IteratorFactory $iteratorFactory,
+        MessageFactory $messageFactory,
         $queueName = 'default'
     ) {
 
@@ -53,6 +54,7 @@ class Queue extends \Zend_Queue
         /** @var Queue\Adapter\Db $adapter */
         $adapter = $this->adapterFactory->create(['options' => $this->getOptions()]);
         $adapter->setIteratorFactory($iteratorFactory);
+        $adapter->setMessageFactory($messageFactory);
         $this->setAdapter($adapter);
     }
 
