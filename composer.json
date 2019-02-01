@@ -2,7 +2,7 @@
   "name": "dopamedia/module-message-queue",
   "description": "N/A",
   "require": {
-    "php": "7.0.2|7.0.4|~7.0.6"
+    "php": "^7.0"
   },
   "type": "magento2-module",
   "version": "1.0.0",
